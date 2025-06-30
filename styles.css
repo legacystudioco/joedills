@@ -45,7 +45,7 @@ body {
     transform: translateX(-50%) translateY(-10px);
 }
 
-.chat-icon svg {
+.chat-minimized svg {
     width: 28px;
     height: 28px;
     fill: white;
