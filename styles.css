@@ -4,6 +4,12 @@
     box-sizing: border-box;
 }
 
+/* Make body transparent for embedding */
+body {
+    background: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
 /* Chat container */
 #teamDillsChat {
     position: fixed;
