@@ -106,7 +106,7 @@ class TeamDillsChat {
                 },
                 body: JSON.stringify({
                     messages: this.messages,
-                    assistantId: 'YOUR_ASSISTANT_ID_HERE' // Replace with your assistant ID
+                    assistantId: 'asst_K8vwjQmMju60l9T3cT3Fw5zi' // Replace with your actual assistant ID
                 })
             });
 
@@ -173,7 +173,7 @@ class TeamDillsChat {
             };
 
             // Send to Make.com webhook
-            await fetch('MAKE.COM CODE HERE', {
+            await fetch('https://hook.us2.make.com/lm78sp5thnp7a2gjf3paw9w9rlujvuie', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
