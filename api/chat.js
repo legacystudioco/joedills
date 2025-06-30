@@ -31,28 +31,103 @@ export default async function handler(req, res) {
             return res.status(500).json({ error: 'OpenAI API key not configured' });
         }
 
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${OPENAI_API_KEY}`,
-            },
-            body: JSON.stringify({
-                model: 'gpt-4',
-                messages: messages,
-                max_tokens: 500,
-                temperature: 0.7,
-            })
-        });
+        // If you have a specific Assistant ID, use the Assistants API
+        // Otherwise, use the Chat Completions API with your custom prompt
+        
+        if (assistantId && assistantId !== 'YOUR_ASSISTANT_ID_HERE') {
+            // Use OpenAI Assistants API
+            const threadResponse = await fetch('https://api.openai.com/v1/threads', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    'OpenAI-Beta': 'assistants=v2'
+                },
+                body: JSON.stringify({})
+            });
+            
+            const thread = await threadResponse.json();
+            
+            // Add the user's message to the thread
+            await fetch(`https://api.openai.com/v1/threads/${thread.id}/messages`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    'OpenAI-Beta': 'assistants=v2'
+                },
+                body: JSON.stringify({
+                    role: 'user',
+                    content: messages[messages.length - 1].content
+                })
+            });
+            
+            // Run the assistant
+            const runResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/runs`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    'OpenAI-Beta': 'assistants=v2'
+                },
+                body: JSON.stringify({
+                    assistant_id: assistantId
+                })
+            });
+            
+            const run = await runResponse.json();
+            
+            // Poll for completion
+            let runStatus = run;
+            while (runStatus.status === 'in_progress' || runStatus.status === 'queued') {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                const statusResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/runs/${run.id}`, {
+                    headers: {
+                        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                        'OpenAI-Beta': 'assistants=v2'
+                    }
+                });
+                runStatus = await statusResponse.json();
+            }
+            
+            // Get the assistant's response
+            const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/messages`, {
+                headers: {
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    'OpenAI-Beta': 'assistants=v2'
+                }
+            });
+            
+            const threadMessages = await messagesResponse.json();
+            const aiResponse = threadMessages.data[0].content[0].text.value;
+            
+            return res.status(200).json({ response: aiResponse });
+            
+        } else {
+            // Use regular Chat Completions API
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4',
+                    messages: messages,
+                    max_tokens: 500,
+                    temperature: 0.7,
+                })
+            });
 
-        if (!response.ok) {
-            throw new Error(`OpenAI API error: ${response.status}`);
+            if (!response.ok) {
+                throw new Error(`OpenAI API error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const aiResponse = data.choices[0].message.content;
+
+            return res.status(200).json({ response: aiResponse });
         }
-
-        const data = await response.json();
-        const aiResponse = data.choices[0].message.content;
-
-        return res.status(200).json({ response: aiResponse });
 
     } catch (error) {
         console.error('Error in chat API:', error);
