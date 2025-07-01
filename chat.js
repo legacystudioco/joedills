@@ -1,64 +1,67 @@
-const chatBox = document.getElementById('chat-box');
-const chatInput = document.getElementById('chat-input');
-const sendBtn = document.getElementById('send-btn');
-const chatToggle = document.getElementById('chat-toggle');
-const closeBtn = document.getElementById('close-btn');
-const chatContainer = document.querySelector('.chat-container');
-const chatMessages = document.getElementById('chat-messages');
+// ========== Chat Box UI Logic ==========
+document.addEventListener("DOMContentLoaded", function () {
+  const chatIcon = document.getElementById("chat-icon");
+  const chatBox = document.getElementById("chat-box");
+  const closeChat = document.getElementById("close-chat");
+  const sendButton = document.getElementById("send-button");
+  const userInput = document.getElementById("user-input");
+  const messagesContainer = document.getElementById("messages");
 
-chatToggle.addEventListener('click', () => {
-  chatContainer.style.display = 'flex';
-  chatToggle.style.display = 'none';
-});
+  chatIcon.addEventListener("click", () => {
+    chatBox.style.display = "flex";
+    chatIcon.style.display = "none";
+  });
 
-closeBtn.addEventListener('click', () => {
-  chatContainer.style.display = 'none';
-  chatToggle.style.display = 'block';
-});
+  closeChat.addEventListener("click", () => {
+    chatBox.style.display = "none";
+    chatIcon.style.display = "block";
+  });
 
-sendBtn.addEventListener('click', sendMessage);
-chatInput.addEventListener('keypress', function (e) {
-  if (e.key === 'Enter') sendMessage();
-});
+  sendButton.addEventListener("click", sendMessage);
+  userInput.addEventListener("keypress", function (e) {
+    if (e.key === "Enter") sendMessage();
+  });
 
-function addMessage(message, sender) {
-  const messageElem = document.createElement('div');
-  messageElem.className = `message ${sender}`;
-  messageElem.textContent = message;
-  chatMessages.appendChild(messageElem);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-async function sendMessage() {
-  const message = chatInput.value.trim();
-  if (!message) return;
-
-  addMessage(message, 'user');
-  chatInput.value = '';
-  addMessage('...', 'bot');
-
-  try {
-    const response = await fetch('https://joedills.vercel.app/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
-    });
-
-    const data = await response.json();
-
-    // Remove placeholder "..." message
-    const loadingMsg = document.querySelector('.message.bot:last-child');
-    if (loadingMsg) loadingMsg.remove();
-
-    if (response.ok && data.reply) {
-      addMessage(data.reply, 'bot');
-    } else {
-      addMessage('Sorry, something went wrong.', 'bot');
-    }
-  } catch (error) {
-    const loadingMsg = document.querySelector('.message.bot:last-child');
-    if (loadingMsg) loadingMsg.remove();
-    addMessage('Unable to connect. Please try again later.', 'bot');
-    console.error('Error sending message:', error);
+  function appendMessage(sender, text) {
+    const messageElement = document.createElement("div");
+    messageElement.classList.add("message", sender);
+    messageElement.textContent = text;
+    messagesContainer.appendChild(messageElement);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
-}
+
+  async function sendMessage() {
+    const message = userInput.value.trim();
+    if (!message) return;
+
+    appendMessage("user", message);
+    userInput.value = "";
+
+    const loadingMsg = document.createElement("div");
+    loadingMsg.classList.add("message", "bot");
+    loadingMsg.textContent = "...";
+    messagesContainer.appendChild(loadingMsg);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+    try {
+      const response = await fetch("https://joedills.vercel.app/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch");
+      }
+
+      const data = await response.json();
+      loadingMsg.remove();
+      appendMessage("bot", data.reply);
+    } catch (error) {
+      loadingMsg.remove();
+      appendMessage("bot", "Oops, something went wrong. Try again.");
+    }
+  }
+});
