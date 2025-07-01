@@ -3,20 +3,18 @@ class TeamDillsChat {
         this.isExpanded = true;
         this.messages = [];
         this.isLoading = false;
-        this.inactivityTimer = null;
-        
+
         this.initializeElements();
         this.attachEventListeners();
 
+        // Add welcome message
         this.messages.push({
             role: 'assistant',
             content: "Hello! I'm here to help answer your questions. How can Team Dills assist you today?"
         });
 
         setTimeout(() => {
-            if (this.chatInput) {
-                this.chatInput.focus();
-            }
+            if (this.chatInput) this.chatInput.focus();
         }, 100);
     }
 
@@ -33,7 +31,7 @@ class TeamDillsChat {
 
     attachEventListeners() {
         this.chatMinimized.addEventListener('click', () => this.expandChat());
-        this.chatClose.addEventListener('click', () => this.closeChatAndSendWebhook());
+        this.chatClose.addEventListener('click', () => this.minimizeChat());
         this.chatSend.addEventListener('click', () => this.sendMessage());
         this.noQuestionsBtn.addEventListener('click', () => this.endChat());
 
@@ -47,6 +45,9 @@ class TeamDillsChat {
         this.chatInput.addEventListener('input', () => {
             this.chatSend.disabled = this.chatInput.value.trim() === '' || this.isLoading;
         });
+
+        // Optional: Auto-end chat if no response after 30 seconds
+        this.inactivityTimer = setTimeout(() => this.endChat(), 30000);
     }
 
     expandChat() {
@@ -62,18 +63,16 @@ class TeamDillsChat {
         this.chatMinimized.classList.remove('hidden');
     }
 
-    closeChatAndSendWebhook() {
-        this.minimizeChat();
-        this.sendWebhook("User closed chat box");
-    }
-
     async sendMessage() {
         const message = this.chatInput.value.trim();
         if (!message || this.isLoading) return;
 
+        clearTimeout(this.inactivityTimer); // reset inactivity timer
+
         this.addMessage('user', message);
         this.chatInput.value = '';
         this.chatSend.disabled = true;
+
         this.showLoading();
 
         try {
@@ -82,17 +81,17 @@ class TeamDillsChat {
 
             if (response) {
                 this.addMessage('assistant', response);
-                this.resetInactivityTimer();
             } else {
-                this.addMessage('assistant', "I apologize, but I'm having trouble responding right now. Please try again.");
+                this.addMessage('assistant', "Sorry, I'm having trouble responding right now.");
             }
         } catch (error) {
-            console.error('Error calling OpenAI:', error);
+            console.error('OpenAI error:', error);
             this.hideLoading();
-            this.addMessage('assistant', "I apologize, but I'm experiencing technical difficulties. Please try again later.");
+            this.addMessage('assistant', "Oops! Something went wrong. Please try again later.");
         }
 
         this.chatSend.disabled = false;
+        this.inactivityTimer = setTimeout(() => this.endChat(), 30000); // restart timer
     }
 
     async callOpenAI(message) {
@@ -125,6 +124,7 @@ class TeamDillsChat {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message message-${role === 'user' ? 'user' : 'bot'}`;
         messageDiv.textContent = content;
+
         this.chatMessages.appendChild(messageDiv);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
     }
@@ -140,6 +140,7 @@ class TeamDillsChat {
             <div class="loading-dot"></div>
             <div class="loading-dot"></div>
         `;
+
         this.chatMessages.appendChild(loadingDiv);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
     }
@@ -150,33 +151,17 @@ class TeamDillsChat {
         if (loadingMessage) loadingMessage.remove();
     }
 
-    resetInactivityTimer() {
-        clearTimeout(this.inactivityTimer);
-        this.inactivityTimer = setTimeout(() => {
-            this.sendWebhook("User inactive for 30 seconds after assistant response");
-        }, 30000);
-    }
-
     async endChat() {
-        await this.sendWebhook("User clicked 'No further questions'");
-        this.addMessage('assistant', "Thank you for using Team Dills chat. Your conversation has been recorded. Have a great day!");
-        this.chatInput.disabled = true;
-        this.chatSend.disabled = true;
-        this.noQuestionsBtn.disabled = true;
-        this.noQuestionsBtn.textContent = 'Chat Ended';
-    }
-
-    generateSessionId() {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
-    }
-
-    async sendWebhook(triggerReason) {
         try {
+            const flatConversation = this.messages.map(m => `${m.role}: ${m.content}`).join('\n');
+
             const chatData = {
                 timestamp: new Date().toISOString(),
-                trigger: triggerReason,
-                messages: this.messages,
-                sessionId: this.generateSessionId()
+                subject: this.messages[1]?.content || 'No subject',
+                conversation: flatConversation,
+                messageCount: this.messages.length,
+                threadId: this.generateSessionId(),
+                website: window.location.href
             };
 
             await fetch('https://hook.us2.make.com/lm78sp5thnp7a2gjf3paw9w9rlujvuie', {
@@ -184,12 +169,24 @@ class TeamDillsChat {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(chatData)
             });
+
+            this.addMessage('assistant', "Thank you for using Team Dills chat. Your conversation has been recorded. Have a great day!");
+            this.chatInput.disabled = true;
+            this.chatSend.disabled = true;
+            this.noQuestionsBtn.disabled = true;
+            this.noQuestionsBtn.textContent = 'Chat Ended';
         } catch (error) {
-            console.error('Webhook failed:', error);
+            console.error('Webhook error:', error);
+            this.addMessage('assistant', "We had an issue saving your chat, but thanks for connecting!");
         }
+    }
+
+    generateSessionId() {
+        return Date.now().toString(36) + Math.random().toString(36).substring(2);
     }
 }
 
+// Launch chat on load
 document.addEventListener('DOMContentLoaded', () => {
     new TeamDillsChat();
 });
