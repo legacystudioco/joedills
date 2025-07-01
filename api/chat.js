@@ -1,6 +1,6 @@
 // api/chat.js - Backend API for handling OpenAI requests
 // This file should be deployed to Vercel, Netlify, or similar service
-
+ 
 export default async function handler(req, res) {
     // Set CORS headers for Wix embedding
     res.setHeader('Access-Control-Allow-Origin', '*');
