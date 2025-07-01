@@ -1,19 +1,18 @@
 class TeamDillsChat {
     constructor() {
-        this.isExpanded = true; // Start expanded
+        this.isExpanded = true;
         this.messages = [];
         this.isLoading = false;
+        this.inactivityTimer = null;
         
         this.initializeElements();
         this.attachEventListeners();
-        
-        // Add welcome message to messages array
+
         this.messages.push({
             role: 'assistant',
             content: "Hello! I'm here to help answer your questions. How can Team Dills assist you today?"
         });
-        
-        // Auto-focus on the input when starting expanded
+
         setTimeout(() => {
             if (this.chatInput) {
                 this.chatInput.focus();
@@ -34,10 +33,10 @@ class TeamDillsChat {
 
     attachEventListeners() {
         this.chatMinimized.addEventListener('click', () => this.expandChat());
-        this.chatClose.addEventListener('click', () => this.minimizeChat());
+        this.chatClose.addEventListener('click', () => this.closeChatAndSendWebhook());
         this.chatSend.addEventListener('click', () => this.sendMessage());
         this.noQuestionsBtn.addEventListener('click', () => this.endChat());
-        
+
         this.chatInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -63,25 +62,27 @@ class TeamDillsChat {
         this.chatMinimized.classList.remove('hidden');
     }
 
+    closeChatAndSendWebhook() {
+        this.minimizeChat();
+        this.sendWebhook("User closed chat box");
+    }
+
     async sendMessage() {
         const message = this.chatInput.value.trim();
         if (!message || this.isLoading) return;
 
-        // Add user message
         this.addMessage('user', message);
         this.chatInput.value = '';
         this.chatSend.disabled = true;
-
-        // Show loading
         this.showLoading();
 
         try {
-            // Call OpenAI API
             const response = await this.callOpenAI(message);
             this.hideLoading();
-            
+
             if (response) {
                 this.addMessage('assistant', response);
+                this.resetInactivityTimer();
             } else {
                 this.addMessage('assistant', "I apologize, but I'm having trouble responding right now. Please try again.");
             }
@@ -96,40 +97,23 @@ class TeamDillsChat {
 
     async callOpenAI(message) {
         try {
-            // Add user message to conversation history
-            this.messages.push({
-                role: 'user',
-                content: message
-            });
+            this.messages.push({ role: 'user', content: message });
 
-            // Since this will be hosted on GitHub, we need to use a backend service
-            // You'll need to create a backend API that handles the OpenAI calls
-            // This prevents exposing your API key in the browser
-            
             const response = await fetch('/api/chat', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     messages: this.messages,
-                    assistantId: 'asst_K8vwjQmMju60l9T3cT3Fw5zi' // Replace with your actual assistant ID
+                    assistantId: 'asst_K8vwjQmMju60l9T3cT3Fw5zi'
                 })
             });
 
-            if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`API error: ${response.status}`);
 
             const data = await response.json();
             const aiResponse = data.response;
-            
-            // Add AI response to conversation history
-            this.messages.push({
-                role: 'assistant',
-                content: aiResponse
-            });
 
+            this.messages.push({ role: 'assistant', content: aiResponse });
             return aiResponse;
         } catch (error) {
             console.error('API call failed:', error);
@@ -141,7 +125,6 @@ class TeamDillsChat {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message message-${role === 'user' ? 'user' : 'bot'}`;
         messageDiv.textContent = content;
-        
         this.chatMessages.appendChild(messageDiv);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
     }
@@ -157,7 +140,6 @@ class TeamDillsChat {
             <div class="loading-dot"></div>
             <div class="loading-dot"></div>
         `;
-        
         this.chatMessages.appendChild(loadingDiv);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
     }
@@ -165,50 +147,49 @@ class TeamDillsChat {
     hideLoading() {
         this.isLoading = false;
         const loadingMessage = document.getElementById('loadingMessage');
-        if (loadingMessage) {
-            loadingMessage.remove();
-        }
+        if (loadingMessage) loadingMessage.remove();
+    }
+
+    resetInactivityTimer() {
+        clearTimeout(this.inactivityTimer);
+        this.inactivityTimer = setTimeout(() => {
+            this.sendWebhook("User inactive for 30 seconds after assistant response");
+        }, 30000);
     }
 
     async endChat() {
-        try {
-            // Prepare chat data for Make.com
-            const chatData = {
-                timestamp: new Date().toISOString(),
-                messages: this.messages,
-                sessionId: this.generateSessionId()
-            };
-
-            // Send to Make.com webhook
-            await fetch('https://hook.us2.make.com/lm78sp5thnp7a2gjf3paw9w9rlujvuie', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(chatData)
-            });
-
-            // Show confirmation message
-            this.addMessage('assistant', "Thank you for using Team Dills chat. Your conversation has been recorded. Have a great day!");
-            
-            // Disable input
-            this.chatInput.disabled = true;
-            this.chatSend.disabled = true;
-            this.noQuestionsBtn.disabled = true;
-            this.noQuestionsBtn.textContent = 'Chat Ended';
-
-        } catch (error) {
-            console.error('Error sending chat to Make.com:', error);
-            this.addMessage('assistant', "There was an issue saving your conversation, but thank you for chatting with Team Dills!");
-        }
+        await this.sendWebhook("User clicked 'No further questions'");
+        this.addMessage('assistant', "Thank you for using Team Dills chat. Your conversation has been recorded. Have a great day!");
+        this.chatInput.disabled = true;
+        this.chatSend.disabled = true;
+        this.noQuestionsBtn.disabled = true;
+        this.noQuestionsBtn.textContent = 'Chat Ended';
     }
 
     generateSessionId() {
         return Date.now().toString(36) + Math.random().toString(36).substr(2);
     }
+
+    async sendWebhook(triggerReason) {
+        try {
+            const chatData = {
+                timestamp: new Date().toISOString(),
+                trigger: triggerReason,
+                messages: this.messages,
+                sessionId: this.generateSessionId()
+            };
+
+            await fetch('https://hook.us2.make.com/lm78sp5thnp7a2gjf3paw9w9rlujvuie', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(chatData)
+            });
+        } catch (error) {
+            console.error('Webhook failed:', error);
+        }
+    }
 }
 
-// Initialize chat when page loads
 document.addEventListener('DOMContentLoaded', () => {
     new TeamDillsChat();
 });
